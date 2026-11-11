@@ -1,0 +1,41 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: "serverless-demo"
+  title: "serverless-demo"
+  description: "a serverless demo app"
+  annotations:
+    # Tekton CI/CD Integration
+    janus-idp.io/tekton: "serverless-demo"
+    tekton.dev/cicd: "true"
+    # Kubernetes Plugin & PEP Namespace Mapping
+    backstage.io/kubernetes-id: "serverless-demo"
+    backstage.io/kubernetes-namespace: "bs-team-alpha-dev"
+    # Reconciler Owner Group
+    company.io/owner-group: "group:default/team-alpha"
+    # Cloud Provider & Ownership Governance
+    aws.amazon.com/region: "eu-south-1"
+    aws.amazon.com/owner: "so.amin"
+    backstage.io/techdocs-ref: dir:.
+  labels:
+    owner: so.amin
+    runtime: "nodejs20.x"
+    trigger: "api-gateway"
+    cloud-provider: aws
+    managed-by: sam-tekton
+  tags:
+    - serverless
+    - sam
+    - aws
+    - lambda
+    - tekton
+    - "dev"
+    # Tags are stricter than label values: Backstage only accepts
+    # [a-z0-9+#] separated by [-], so a runtime such as `nodejs20.x` must
+    # lose its dots. The raw value stays in labels.runtime above.
+    - "nodejs20-x"
+    - "api-gateway"
+spec:
+  type: service
+  lifecycle: "dev"
+  owner: "group:default/team-alpha"

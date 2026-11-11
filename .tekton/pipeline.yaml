@@ -1,0 +1,179 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: "serverless-demo-pipeline"
+  namespace: "bs-team-alpha-dev"
+  labels:
+    app.kubernetes.io/name: "serverless-demo"
+    app.kubernetes.io/part-of: "serverless-demo"
+    app.kubernetes.io/component: pipeline
+    app.kubernetes.io/managed-by: backstage-scaffolder
+    owner: so.amin
+  annotations:
+    tekton.dev/displayName: "AWS Serverless Deployment Pipeline for serverless-demo"
+    tekton.dev/description: >-
+      Orchestrates git-clone -> unit-tests -> sam-validate -> sam-build -> sam-deploy.
+      Guarantees Owner=so.amin across the CloudFormation stack and all provisioned AWS services.
+spec:
+  params:
+    - name: repo-url
+      type: string
+      description: Git repository clone URL.
+    - name: revision
+      type: string
+      default: main
+      description: Git commit, branch or tag.
+    - name: service-name
+      type: string
+      default: "serverless-demo"
+    - name: environment
+      type: string
+      default: "dev"
+    - name: aws-region
+      type: string
+      default: "eu-south-1"
+    - name: stack-name
+      type: string
+      default: "serverless-demo-dev"
+    - name: runtime
+      type: string
+      default: "nodejs20.x"
+    - name: namespace
+      type: string
+      default: "bs-team-alpha-dev"
+    - name: service-account-name
+      type: string
+      default: tekton-pipeline
+    - name: s3-bucket
+      type: string
+      default: "so-amin-idp-terraform-backend"
+      description: S3 bucket for SAM deployment artifacts.
+
+  workspaces:
+    - name: shared-workspace
+      description: Shared ReadWriteMany/ReadWriteOnce PVC across all pipeline tasks.
+
+  results:
+    - name: stack-name
+      description: Deployed CloudFormation stack name.
+
+      value: $(tasks.sam-deploy.results.stack-name)
+    - name: aws-region
+      description: Region where the stack was deployed.
+      value: $(tasks.sam-deploy.results.aws-region)
+
+
+  tasks:
+    # -------------------------------------------------------------------------
+    # 1. Clone repository source code
+    # -------------------------------------------------------------------------
+    - name: git-clone
+      taskSpec:
+        params:
+          - name: url
+            type: string
+          - name: revision
+            type: string
+        workspaces:
+          - name: output
+
+        steps:
+          - name: clone
+            image: alpine/git:2.45.2
+            workingDir: $(workspaces.output.path)
+            script: |
+              #!/usr/bin/env sh
+              set -eu
+              git config --global --add safe.directory '*'
+              echo "Cloning $(params.url) at $(params.revision)..."
+              rm -rf ./* ./.[!.]*
+              git init
+              git remote add origin "$(params.url)"
+              git fetch --depth 1 origin "$(params.revision)"
+              git checkout -q FETCH_HEAD
+              echo "Checked out $(git rev-parse HEAD)"
+
+      params:
+
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.revision)
+
+      workspaces:
+        - name: output
+          workspace: shared-workspace
+
+    # -------------------------------------------------------------------------
+    # 2. Run unit tests
+    # -------------------------------------------------------------------------
+    - name: unit-tests
+      runAfter:
+        - git-clone
+      taskRef:
+        name: sam-unit-tests
+      params:
+
+        - name: runtime
+          value: $(params.runtime)
+
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+
+    # -------------------------------------------------------------------------
+    # 3. Validate SAM template and lint with cfn-lint
+    # -------------------------------------------------------------------------
+    - name: sam-validate
+      runAfter:
+        - unit-tests
+      taskRef:
+        name: sam-validate
+      params:
+        - name: template-file
+          value: "sam-template.yaml"
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+
+    # -------------------------------------------------------------------------
+    # 4. Build SAM application artifacts
+    # -------------------------------------------------------------------------
+    - name: sam-build
+      runAfter:
+        - sam-validate
+      taskRef:
+        name: sam-build
+      params:
+        - name: template-file
+          value: "sam-template.yaml"
+      workspaces:
+        - name: source
+          workspace: shared-workspace
+
+    # -------------------------------------------------------------------------
+    # 5. Deploy SAM CloudFormation stack
+    # -------------------------------------------------------------------------
+    - name: sam-deploy
+      runAfter:
+        - sam-build
+      taskRef:
+        name: sam-deploy
+      params:
+
+        - name: stack-name
+          value: $(params.stack-name)
+        - name: aws-region
+          value: $(params.aws-region)
+        - name: environment
+          value: $(params.environment)
+        - name: service-name
+          value: $(params.service-name)
+
+        - name: owner-tag
+          value: "so.amin"
+        - name: s3-bucket
+          value: $(params.s3-bucket)
+      workspaces:
+        - name: source
+          workspace: shared-workspace

@@ -1,0 +1,109 @@
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: "serverless-demo-binding"
+  namespace: "bs-team-alpha-dev"
+  labels:
+    app.kubernetes.io/name: "serverless-demo"
+    owner: so.amin
+
+spec:
+  params:
+    - name: repo-url
+      value: $(body.repository.clone_url)
+    - name: git-revision
+      value: $(body.head_commit.id)
+    - name: git-branch
+      value: $(body.ref)
+    - name: pusher-name
+      value: $(body.pusher.name)
+
+
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: "serverless-demo-template"
+  namespace: "bs-team-alpha-dev"
+  labels:
+    app.kubernetes.io/name: "serverless-demo"
+    owner: so.amin
+spec:
+  params:
+    - name: repo-url
+      description: Git clone URL
+    - name: git-revision
+      description: Git commit SHA
+    - name: git-branch
+      description: Git branch ref
+    - name: pusher-name
+      description: User who triggered push
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: "serverless-demo-push-"
+        namespace: "bs-team-alpha-dev"
+        labels:
+          tekton.dev/pipeline: "serverless-demo-pipeline"
+          app.kubernetes.io/name: "serverless-demo"
+          app.kubernetes.io/part-of: "serverless-demo"
+          owner: so.amin
+          janus-idp.io/tekton: "serverless-demo"
+      spec:
+        pipelineRef:
+          name: "serverless-demo-pipeline"
+        taskRunTemplate:
+          serviceAccountName: tekton-pipeline
+        serviceAccountName: tekton-pipeline
+        params:
+
+          - name: repo-url
+            value: $(tt.params.repo-url)
+          - name: revision
+            value: $(tt.params.git-revision)
+
+          - name: service-name
+            value: "serverless-demo"
+          - name: environment
+            value: "dev"
+          - name: aws-region
+            value: "eu-south-1"
+          - name: stack-name
+            value: "serverless-demo-dev"
+          - name: runtime
+            value: "nodejs20.x"
+          - name: namespace
+            value: "bs-team-alpha-dev"
+          - name: service-account-name
+            value: tekton-pipeline
+        workspaces:
+          - name: shared-workspace
+            persistentVolumeClaim:
+              claimName: "serverless-demo-dev-workspace"
+
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: "serverless-demo-listener"
+  namespace: "bs-team-alpha-dev"
+  labels:
+    app.kubernetes.io/name: "serverless-demo"
+    app.kubernetes.io/part-of: "serverless-demo"
+    owner: so.amin
+spec:
+  serviceAccountName: tekton-triggers-sa
+  triggers:
+    - name: github-push-to-main
+      interceptors:
+        - ref:
+            name: "cel"
+          params:
+            - name: "filter"
+              value: "header.match('X-GitHub-Event', 'push') && body.ref == 'refs/heads/main'"
+      bindings:
+        - ref: "serverless-demo-binding"
+      template:
+        ref: "serverless-demo-template"

@@ -1,0 +1,46 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: "serverless-demo-run-"
+  namespace: "bs-team-alpha-dev"
+  labels:
+    tekton.dev/pipeline: "serverless-demo-pipeline"
+    app.kubernetes.io/name: "serverless-demo"
+    app.kubernetes.io/part-of: "serverless-demo"
+    owner: so.amin
+    janus-idp.io/tekton: "serverless-demo"
+spec:
+  pipelineRef:
+    name: "serverless-demo-pipeline"
+  taskRunTemplate:
+    serviceAccountName: tekton-pipeline
+  serviceAccountName: tekton-pipeline
+  params:
+    - name: repo-url
+      value: "https://github.com?owner=SoykatAmin&repo=serverless-demo"
+    - name: revision
+      value: main
+    - name: service-name
+      value: "serverless-demo"
+    - name: environment
+      value: "dev"
+    - name: aws-region
+      value: "eu-south-1"
+    - name: stack-name
+      value: "serverless-demo-dev"
+    - name: runtime
+      value: "nodejs20.x"
+    - name: namespace
+      value: "bs-team-alpha-dev"
+    - name: service-account-name
+      value: tekton-pipeline
+  workspaces:
+    - name: shared-workspace
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          storageClassName: gp3
+          resources:
+            requests:
+              storage: 2Gi

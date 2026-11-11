@@ -1,0 +1,139 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >-
+  Production AWS Serverless application for serverless-demo (dev).
+  Orchestrated with AWS SAM and continuous deployment via Tekton Pipelines.
+  Enforces Owner=so.amin across all CloudFormation resources.
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 256
+    Tracing: Active
+    Environment:
+      Variables:
+        ENVIRONMENT: "dev"
+        SERVICE_NAME: "serverless-demo"
+        AWS_OWNER: "so.amin"
+
+        TABLE_NAME: !Ref ApplicationTable
+
+    Tags:
+      Owner: so.amin
+      Service: "serverless-demo"
+      Environment: "dev"
+      ManagedBy: SAM-Tekton
+  Api:
+    TracingEnabled: true
+    OpenApiVersion: '3.0.1'
+
+Resources:
+
+  ServerlessHttpApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: "dev"
+      TracingEnabled: true
+      Tags:
+        Owner: so.amin
+        Service: "serverless-demo"
+        Environment: "dev"
+        ManagedBy: SAM-Tekton
+
+
+  ServerlessFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "serverless-demo-dev-handler"
+      CodeUri: src/
+      Handler: app.lambdaHandler
+      Runtime: "nodejs20.x"
+      Architectures:
+        - x86_64
+      Tracing: Active
+      Tags:
+        Owner: so.amin
+        Service: "serverless-demo"
+        Environment: "dev"
+        ManagedBy: SAM-Tekton
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSXRayDaemonWriteAccess
+
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ApplicationTable
+
+
+      Events:
+
+        ApiGatewayRootEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServerlessHttpApi
+            Path: /
+            Method: ANY
+        ApiGatewayProxyEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ServerlessHttpApi
+            Path: /{proxy+}
+            Method: ANY
+
+
+
+
+
+  ApplicationTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "serverless-demo-dev-table"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: Owner
+          Value: so.amin
+        - Key: Service
+          Value: "serverless-demo"
+        - Key: Environment
+          Value: "dev"
+        - Key: ManagedBy
+          Value: SAM-Tekton
+
+
+Outputs:
+  ServerlessFunctionArn:
+    Description: Lambda Function ARN
+    Value: !GetAtt ServerlessFunction.Arn
+    Export:
+      Name: !Sub "serverless-demo-dev-function-arn"
+
+
+  ApiGatewayEndpoint:
+    Description: API Gateway invocation URL
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com/dev/"
+    Export:
+      Name: !Sub "serverless-demo-dev-api-endpoint"
+
+
+
+
+
+  DynamoDBTableName:
+    Description: DynamoDB Application Table Name
+    Value: !Ref ApplicationTable
+    Export:
+      Name: !Sub "serverless-demo-dev-table-name"
+
+
+  ResourceOwnerTag:
+    Description: Infrastructure Owner governance tag verified across all resources
+    Value: "so.amin"

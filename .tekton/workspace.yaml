@@ -1,0 +1,149 @@
+# Shared Tekton workspace and namespaced prerequisites for
+# serverless-demo (dev).
+#
+# Apply this once per generated repository, before the first pipeline run:
+#
+#   kubectl apply -f .tekton/workspace.yaml
+#   kubectl apply -f .tekton/sam-tasks.yaml
+#   kubectl apply -f .tekton/pipeline.yaml
+#   kubectl apply -f .tekton/triggers.yaml
+#
+# The file creates everything the pipeline needs inside its own namespace:
+#   * the namespace and the shared workspace PVC;
+#   * `tekton-pipeline`, the identity that runs the PipelineRun;
+#   * `tekton-triggers-sa`, the EventListener identity;
+#   * namespace-scoped RBAC for the pipeline deployment and for Triggers.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bs-team-alpha-dev
+  labels:
+    app.kubernetes.io/part-of: serverless-demo
+    app.kubernetes.io/managed-by: backstage-scaffolder
+    owner: so.amin
+    environment: dev
+  annotations:
+    company.io/owner-group: "group:default/team-alpha"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tekton-pipeline
+  namespace: bs-team-alpha-dev
+  labels:
+    app.kubernetes.io/part-of: serverless-demo
+    app.kubernetes.io/managed-by: backstage-scaffolder
+    owner: so.amin
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::523753954008:role/tekton-pipeline-provisioner
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tekton-triggers-sa
+  namespace: bs-team-alpha-dev
+  labels:
+    app.kubernetes.io/part-of: serverless-demo
+    app.kubernetes.io/managed-by: backstage-scaffolder
+    owner: so.amin
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tekton-pipeline-deploy
+  namespace: bs-team-alpha-dev
+  labels:
+    app.kubernetes.io/part-of: serverless-demo
+    app.kubernetes.io/managed-by: backstage-scaffolder
+    owner: so.amin
+rules:
+  - apiGroups: [""]
+    resources:
+      - configmaps
+      - endpoints
+      - events
+      - persistentvolumeclaims
+      - pods
+      - pods/log
+      - serviceaccounts
+      - services
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps", "services"]
+    verbs: ["create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tekton-pipeline-deploy
+  namespace: bs-team-alpha-dev
+  labels:
+    app.kubernetes.io/part-of: serverless-demo
+    app.kubernetes.io/managed-by: backstage-scaffolder
+    owner: so.amin
+subjects:
+  - kind: ServiceAccount
+    name: tekton-pipeline
+    namespace: bs-team-alpha-dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: tekton-pipeline-deploy
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tekton-triggers-eventlistener
+  namespace: bs-team-alpha-dev
+  labels:
+    app.kubernetes.io/part-of: serverless-demo
+    app.kubernetes.io/managed-by: backstage-scaffolder
+    owner: so.amin
+subjects:
+  - kind: ServiceAccount
+    name: tekton-triggers-sa
+    namespace: bs-team-alpha-dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tekton-triggers-eventlistener-roles
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: serverless-demo-dev-tekton-triggers-interceptors
+  labels:
+    app.kubernetes.io/part-of: serverless-demo
+    app.kubernetes.io/managed-by: backstage-scaffolder
+    owner: so.amin
+subjects:
+  - kind: ServiceAccount
+    name: tekton-triggers-sa
+    namespace: bs-team-alpha-dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tekton-triggers-interceptor-reader
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: serverless-demo-dev-workspace
+  namespace: bs-team-alpha-dev
+  labels:
+    app.kubernetes.io/part-of: serverless-demo
+    app.kubernetes.io/managed-by: backstage-scaffolder
+    owner: so.amin
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp3
+  resources:
+    requests:
+      storage: 2Gi

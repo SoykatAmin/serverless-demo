@@ -1,0 +1,22 @@
+version = 0.1
+
+[default.global.parameters]
+stack_name = "serverless-demo-dev"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.validate.parameters]
+lint = true
+
+[default.deploy.parameters]
+capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
+confirm_changeset = false
+fail_on_empty_changeset = false
+stack_name = "serverless-demo-dev"
+s3_prefix = "serverless-demo"
+region = "eu-south-1"
+# Explicit tag governance ensuring the CloudFormation stack propagates Owner=so.amin to all resources
+tags = "Owner=\"so.amin\" Service=\"serverless-demo\" Environment=\"dev\" ManagedBy=\"SAM-Tekton\""
+resolve_s3 = true
